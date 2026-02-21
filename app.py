@@ -5,7 +5,7 @@ import ollama
 import pandas as pd
 import streamlit as st
 from pubmed import search_pubmed, PubMedError
-from summarizer import summarize_gene_function, summarize_gene_function_brief, SummarizerError
+from summarizer import summarize_gene_function, summarize_gene_function_brief, SummarizerError, LENGTH_PRESETS
 from hgnc import HGNCLookup
 
 st.set_page_config(page_title="Gene-Cell Function Summarizer", layout="wide")
@@ -178,6 +178,12 @@ with st.sidebar:
         st.warning("No Ollama models detected. Is `ollama serve` running?")
         model = st.text_input("LLM Model (manual)", value="llama3.2:latest")
     max_articles = st.slider("Max articles", min_value=5, max_value=30, value=20)
+    summary_length = st.select_slider(
+        "Summary length",
+        options=list(LENGTH_PRESETS.keys()),
+        value="medium",
+        help="Short: 1-2 paragraphs | Medium: 2-4 paragraphs | Long: 5-7 paragraphs",
+    )
     email = st.text_input("NCBI Email", value="user@example.com", help="Required by NCBI for API access")
 
 # --- Main area ---
@@ -238,10 +244,10 @@ if st.button("Search & Summarize", type="primary"):
 
             # --- LLM summarization ---
             summarize_fn = summarize_gene_function_brief if multi_gene else summarize_gene_function
-            label = f"Summarizing {gene_query} ({('brief' if multi_gene else 'full')})..."
+            label = f"Summarizing {gene_query} ({summary_length})..."
             with st.status(label, expanded=not multi_gene) as status:
                 try:
-                    summary = summarize_fn(gene_query, cell_type.strip(), articles, model=model)
+                    summary = summarize_fn(gene_query, cell_type.strip(), articles, model=model, summary_length=summary_length)
                 except SummarizerError as e:
                     error_msg = str(e)
                     if "connection" in error_msg.lower() or "refused" in error_msg.lower():

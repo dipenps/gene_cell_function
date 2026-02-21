@@ -7,21 +7,35 @@ class SummarizerError(Exception):
     """Raised when LLM summarization fails."""
 
 
+# Length presets: (label, paragraph instruction, detail level)
+LENGTH_PRESETS = {
+    "short": "Keep it to 1-2 short paragraphs. Be concise and direct.",
+    "medium": "Be 2-4 paragraphs of integrated biological insight.",
+    "long": "Provide a comprehensive 5-7 paragraph analysis with detailed discussion of mechanisms, evidence, and clinical significance.",
+}
+
+
 def summarize_gene_function(
     gene: str,
     cell_type: str,
     articles: list,
     model: str = "llama3.2:latest",
+    summary_length: str = "medium",
 ) -> str:
     """Summarize gene function in a cell type based on PubMed articles.
 
-    Uses a local Ollama LLM to generate a 2-4 paragraph summary citing PMIDs.
+    Uses a local Ollama LLM to generate a summary citing PMIDs.
     Articles without abstracts are filtered out before prompting.
+
+    Args:
+        summary_length: One of "short", "medium", "long".
     """
     # Filter to articles that have abstracts
     articles_with_abstracts = [a for a in articles if a.abstract.strip()]
     if not articles_with_abstracts:
         raise SummarizerError("No articles with abstracts available for summarization.")
+
+    length_instruction = LENGTH_PRESETS.get(summary_length, LENGTH_PRESETS["medium"])
 
     # Build the literature context
     literature = []
@@ -49,7 +63,7 @@ Your output should:
 - Focus on the GENE'S FUNCTION in the CELL TYPE, not article-by-article summaries
 - Synthesize findings across multiple studies
 - Highlight consensus findings and note contradictions if present
-- Be 2-4 paragraphs of integrated biological insight
+- {length_instruction}
 - Use precise scientific terminology
 
 Literature:
@@ -65,14 +79,18 @@ def summarize_gene_function_brief(
     cell_type: str,
     articles: list,
     model: str = "llama3.2:latest",
+    summary_length: str = "short",
 ) -> str:
-    """Generate a short focused summary of gene function for multi-gene reports.
+    """Generate a focused summary of gene function for multi-gene reports.
 
-    Produces a 1-2 paragraph summary highlighting key function only.
+    Args:
+        summary_length: One of "short", "medium", "long".
     """
     articles_with_abstracts = [a for a in articles if a.abstract.strip()]
     if not articles_with_abstracts:
         raise SummarizerError(f"No articles with abstracts available for {gene}.")
+
+    length_instruction = LENGTH_PRESETS.get(summary_length, LENGTH_PRESETS["short"])
 
     literature = []
     for a in articles_with_abstracts:
@@ -84,7 +102,7 @@ def summarize_gene_function_brief(
 
     literature_text = "\n---\n".join(literature)
 
-    prompt = f"""You are a molecular biology expert. Write a BRIEF summary of the function of the gene **{gene}** in **{cell_type}**.
+    prompt = f"""You are a molecular biology expert. Write a summary of the function of the gene **{gene}** in **{cell_type}**.
 
 Focus on:
 - The primary biological function of {gene} in {cell_type}
@@ -92,12 +110,12 @@ Focus on:
 - Major disease associations (if any)
 - Cite key articles by PMID [PMID: XXXXX]
 
-Keep it to 1-2 short paragraphs. Be concise and direct.
+{length_instruction}
 
 Literature:
 {literature_text}
 
-Brief summary of {gene} in {cell_type}:"""
+Summary of {gene} in {cell_type}:"""
 
     return _call_ollama(prompt, model)
 
