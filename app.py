@@ -7,12 +7,6 @@ import streamlit as st
 from pubmed import search_pubmed, PubMedError
 from summarizer import summarize_gene_function, summarize_gene_function_brief, SummarizerError, LENGTH_PRESETS
 from hgnc import HGNCLookup
-from context_filter import (
-    batch_assess_relevance,
-    filter_articles,
-    ContextFilterError,
-    RelevanceResult,
-)
 
 st.set_page_config(page_title="Gene-Cell Function Summarizer", layout="wide")
 
@@ -204,15 +198,7 @@ with st.sidebar:
         help="Short: 1-2 paragraphs | Medium: 2-4 paragraphs | Long: 5-7 paragraphs",
     )
     email = st.text_input("NCBI Email", value="user@example.com", help="Required by NCBI for API access")
-    reviews_only = st.toggle("Reviews only", value=False, help="Filter to review articles only (pubt.review) for higher-quality summaries")
-
-    st.divider()
-    st.subheader("Context Filter")
-    use_context_filter = st.toggle("Enable context filtering", value=True, help="Filter articles by contextual relevance using LLM")
-    use_improved_search = st.toggle("Use improved search query", value=True, help="Add functional keywords to PubMed query to reduce false positives")
-    include_borderline = st.toggle("Include borderline matches", value=False, help="Include articles where gene and cell type co-occur but may not be functionally linked (requires high confidence)")
-    if use_context_filter:
-        min_confidence = st.slider("Min confidence", min_value=0.0, max_value=1.0, value=0.6, step=0.1, help="Minimum confidence score for relevance classification")
+    reviews_only = st.toggle("Reviews only", value=True, help="Filter to review articles only for higher-quality summaries")
 
 # --- Main area ---
 st.title("Gene-Cell Function Summarizer")
@@ -259,12 +245,12 @@ if st.button("Search & Summarize", type="primary"):
                         cell_type.strip(),
                         max_results=max_articles,
                         email=email,
-                        use_contextual_query=use_improved_search,
+                        use_contextual_query=True,
                         reviews_only=reviews_only,
                     )
                 except PubMedError as e:
                     st.error(f"PubMed search failed for {gene_query}: {e}")
-                    results.append({"gene": gene, "canonical": canonical_symbol, "alias_info": alias_info, "articles": [], "filtered_results": [], "summary": None, "error": str(e)})
+                    results.append({"gene": gene, "canonical": canonical_symbol, "alias_info": alias_info, "articles": [], "summary": None, "error": str(e)})
                     continue
 
                 if not articles:
@@ -272,52 +258,20 @@ if st.button("Search & Summarize", type="primary"):
                         f'No articles found for **{gene_query}** in **{cell_type}**. '
                         "Try broader terms (e.g., shorter gene alias or general cell lineage)."
                     )
-                    results.append({"gene": gene, "canonical": canonical_symbol, "alias_info": alias_info, "articles": [], "filtered_results": [], "summary": None, "error": None})
+                    results.append({"gene": gene, "canonical": canonical_symbol, "alias_info": alias_info, "articles": [], "summary": None, "error": None})
                     continue
 
                 search_msg = f"Found {len(articles)} articles for {gene_query}"
-                if use_improved_search:
-                    search_msg += " (improved query)"
                 if reviews_only:
                     search_msg += " [reviews only]"
                 status.update(label=search_msg, state="complete")
-
-            # --- Context filtering ---
-            filtered_results = []
-            excluded_results = []
-            if use_context_filter:
-                with st.status(f"Filtering articles by context...", expanded=not multi_gene) as status:
-                    try:
-                        filtered_results = batch_assess_relevance(
-                            gene_query,
-                            cell_type.strip(),
-                            articles,
-                            model=model,
-                            include_borderline=include_borderline,
-                        )
-                        relevant_articles, excluded_results = filter_articles(filtered_results, min_confidence=min_confidence)
-                        status.update(
-                            label=f"Filtered: {len(relevant_articles)} of {len(articles)} articles are contextually relevant",
-                            state="complete"
-                        )
-                        if not relevant_articles:
-                            st.warning(
-                                f"No articles passed context filtering for **{gene_query}** in **{cell_type}**. "
-                                "Try disabling context filter or adjusting confidence threshold."
-                            )
-                    except ContextFilterError as e:
-                        st.error(f"Context filtering failed: {e}")
-                        # Fall back to unfiltered articles
-                        relevant_articles = articles
-            else:
-                relevant_articles = articles
 
             # --- LLM summarization ---
             summarize_fn = summarize_gene_function_brief if multi_gene else summarize_gene_function
             label = f"Summarizing {gene_query} ({summary_length})..."
             with st.status(label, expanded=not multi_gene) as status:
                 try:
-                    summary = summarize_fn(gene_query, cell_type.strip(), relevant_articles, model=model, summary_length=summary_length)
+                    summary = summarize_fn(gene_query, cell_type.strip(), articles, model=model, summary_length=summary_length)
                 except SummarizerError as e:
                     error_msg = str(e)
                     if "connection" in error_msg.lower() or "refused" in error_msg.lower():
@@ -327,12 +281,12 @@ if st.button("Search & Summarize", type="primary"):
                         )
                     else:
                         st.error(f"Summarization failed for {gene_query}: {e}")
-                    results.append({"gene": gene, "canonical": canonical_symbol, "alias_info": alias_info, "articles": relevant_articles, "filtered_results": excluded_results, "summary": None, "error": str(e)})
+                    results.append({"gene": gene, "canonical": canonical_symbol, "alias_info": alias_info, "articles": articles, "summary": None, "error": str(e)})
                     continue
 
                 status.update(label=f"Summary complete for {gene_query}", state="complete")
 
-            results.append({"gene": gene, "canonical": canonical_symbol, "alias_info": alias_info, "articles": relevant_articles, "filtered_results": excluded_results, "summary": summary, "error": None})
+            results.append({"gene": gene, "canonical": canonical_symbol, "alias_info": alias_info, "articles": articles, "summary": summary, "error": None})
 
             # --- Display summary ---
             st.markdown(summary)
@@ -343,14 +297,8 @@ if st.button("Search & Summarize", type="primary"):
                     display_alias_table(alias_info)
 
             # --- Source articles ---
-            with st.expander(f"Source Articles ({len(relevant_articles)} after filtering)"):
-                display_articles(relevant_articles)
-            
-            # --- Excluded articles ---
-            if use_context_filter and excluded_results:
-                with st.expander(f"⚠️ Excluded Articles ({len(excluded_results)} did not pass context filter)"):
-                    st.markdown("These articles mention both the gene and cell type but do not appear to describe the gene's function *in* the specified cell type.")
-                    display_filtered_results(excluded_results)
+            with st.expander(f"Source Articles ({len(articles)})"):
+                display_articles(articles)
 
         # --- Download buttons (full report covering all genes) ---
         successful = [r for r in results if r["summary"]]
