@@ -66,7 +66,7 @@ def search_pubmed(
 
     # Add review filter if requested
     if reviews_only:
-        query += ' AND pubt.review'
+        query += ' AND (Review[pt] OR review[Publication Type])'
 
     # Search for matching PMIDs
     try:
