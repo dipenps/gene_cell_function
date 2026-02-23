@@ -26,6 +26,7 @@ def search_pubmed(
     max_results: int = 20,
     email: str = "user@example.com",
     use_contextual_query: bool = True,
+    reviews_only: bool = False,
 ) -> list[Article]:
     """Search PubMed for articles about a gene's function in a cell type.
 
@@ -35,6 +36,7 @@ def search_pubmed(
         max_results: Maximum number of results
         email: NCBI requires an email for API access
         use_contextual_query: If True, use improved query with functional keywords
+        reviews_only: If True, filter to review articles only (pubt.review)
 
     Returns:
         A list of Article dataclasses sorted by relevance.
@@ -61,6 +63,10 @@ def search_pubmed(
     else:
         # Original simple co-occurrence query
         query = f'"{gene}"[Title/Abstract] AND "{cell_type}"[Title/Abstract]'
+
+    # Add review filter if requested
+    if reviews_only:
+        query += ' AND pubt.review'
 
     # Search for matching PMIDs
     try:
