@@ -25,13 +25,42 @@ def search_pubmed(
     cell_type: str,
     max_results: int = 20,
     email: str = "user@example.com",
+    use_contextual_query: bool = True,
 ) -> list[Article]:
     """Search PubMed for articles about a gene's function in a cell type.
 
-    Returns a list of Article dataclasses sorted by relevance.
+    Args:
+        gene: Gene symbol to search
+        cell_type: Cell type to search
+        max_results: Maximum number of results
+        email: NCBI requires an email for API access
+        use_contextual_query: If True, use improved query with functional keywords
+
+    Returns:
+        A list of Article dataclasses sorted by relevance.
     """
     Entrez.email = email
-    query = f'"{gene}"[Title/Abstract] AND "{cell_type}"[Title/Abstract]'
+
+    if use_contextual_query:
+        # Improved query: gene + cell type + functional keywords
+        # This reduces false positives by requiring functional context terms
+        query = (
+            f'"{gene}"[Title/Abstract] AND "{cell_type}"[Title/Abstract] AND ('
+            f'"expression"[Title/Abstract] OR '
+            f'"function"[Title/Abstract] OR '
+            f'"role"[Title/Abstract] OR '
+            f'"activity"[Title/Abstract] OR '
+            f'"regulation"[Title/Abstract] OR '
+            f'"signaling"[Title/Abstract] OR '
+            f'"pathway"[Title/Abstract] OR '
+            f'"differentiation"[Title/Abstract] OR '
+            f'"proliferation"[Title/Abstract] OR '
+            f'"activation"[Title/Abstract]'
+            f')'
+        )
+    else:
+        # Original simple co-occurrence query
+        query = f'"{gene}"[Title/Abstract] AND "{cell_type}"[Title/Abstract]'
 
     # Search for matching PMIDs
     try:
