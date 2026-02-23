@@ -204,7 +204,8 @@ with st.sidebar:
         help="Short: 1-2 paragraphs | Medium: 2-4 paragraphs | Long: 5-7 paragraphs",
     )
     email = st.text_input("NCBI Email", value="user@example.com", help="Required by NCBI for API access")
-    
+    reviews_only = st.toggle("Reviews only", value=False, help="Filter to review articles only (pubt.review) for higher-quality summaries")
+
     st.divider()
     st.subheader("Context Filter")
     use_context_filter = st.toggle("Enable context filtering", value=True, help="Filter articles by contextual relevance using LLM")
@@ -259,6 +260,7 @@ if st.button("Search & Summarize", type="primary"):
                         max_results=max_articles,
                         email=email,
                         use_contextual_query=use_improved_search,
+                        reviews_only=reviews_only,
                     )
                 except PubMedError as e:
                     st.error(f"PubMed search failed for {gene_query}: {e}")
@@ -275,7 +277,9 @@ if st.button("Search & Summarize", type="primary"):
 
                 search_msg = f"Found {len(articles)} articles for {gene_query}"
                 if use_improved_search:
-                    search_msg += " (using improved query)"
+                    search_msg += " (improved query)"
+                if reviews_only:
+                    search_msg += " [reviews only]"
                 status.update(label=search_msg, state="complete")
 
             # --- Context filtering ---
