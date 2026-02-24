@@ -7,6 +7,7 @@ import streamlit as st
 from pubmed import search_pubmed, PubMedError
 from summarizer import summarize_gene_function, summarize_gene_function_brief, SummarizerError, LENGTH_PRESETS
 from hgnc import HGNCLookup
+from context_filter import RelevanceResult
 
 st.set_page_config(page_title="Gene-Cell Function Summarizer", layout="wide")
 
